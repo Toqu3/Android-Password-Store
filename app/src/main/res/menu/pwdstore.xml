@@ -22,10 +22,14 @@
     <item android:id="@+id/git_push"
         android:title="Push to remote"/>
 
+
     <item android:id="@+id/refresh"
-        android:title="Refresh list"
+        android:title="Force refresh list"
         pwstore:showAsAction="never"
         android:icon="@drawable/ic_action_refresh"/>
+
+    <item android:id="@+id/new_repository"
+        android:title="New repository"/>
 
     <item android:id="@+id/user_pref"
         android:title="Settings"

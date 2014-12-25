@@ -4,6 +4,7 @@ import android.app.Activity;
 
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.PullCommand;
+import org.eclipse.jgit.merge.MergeStrategy;
 
 import java.io.File;
 
@@ -28,6 +29,7 @@ public class PullOperation extends GitOperation {
         this.command = new Git(repository)
                 .pull()
                 .setRebase(true)
+                .setStrategy(MergeStrategy.THEIRS)
                 .setRemote("origin");
         return this;
     }

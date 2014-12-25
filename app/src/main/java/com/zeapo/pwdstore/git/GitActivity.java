@@ -29,10 +29,14 @@ import org.eclipse.jgit.api.CloneCommand;
 import org.eclipse.jgit.api.Git;
 
 import org.apache.commons.io.FileUtils;
+import org.eclipse.jgit.lib.Repository;
+import org.eclipse.jgit.lib.StoredConfig;
+import org.eclipse.jgit.transport.RemoteConfig;
 import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 
 import java.io.File;
 import java.io.IOException;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -57,8 +61,9 @@ public class GitActivity extends ActionBarActivity {
     public static final int REQUEST_PULL = 101;
     public static final int REQUEST_PUSH = 102;
     public static final int REQUEST_CLONE = 103;
-    public static final int REQUEST_INIT = 104;
-    public static final int EDIT_SERVER = 105;
+    public static final int REQUEST_SYNC = 104;
+    public static final int REQUEST_INIT = 105;
+    public static final int EDIT_SERVER = 106;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -163,11 +168,13 @@ public class GitActivity extends ActionBarActivity {
                         updateURI();
                     }
                 };
-
-                server_url.setText(settings.getString("git_remote_server", ""));
-                server_port.setText(settings.getString("git_remote_port", ""));
-                server_user.setText(settings.getString("git_remote_username", ""));
-                server_path.setText(settings.getString("git_remote_location", ""));
+//
+//                server_url.setText(settings.getString("git_remote_server", ""));
+//                server_port.setText(settings.getString("git_remote_port", ""));
+//                server_user.setText(settings.getString("git_remote_username", ""));
+//                server_path.setText(settings.getString("git_remote_location", ""));
+                server_uri.setText(PasswordRepository.getRemote("origin"));
+                splitURI();
 
                 server_url.addTextChangedListener(new TextWatcher() {
                     @Override
@@ -263,6 +270,10 @@ public class GitActivity extends ActionBarActivity {
 
             case REQUEST_PUSH:
                 pushToRepository();
+                break;
+
+            case REQUEST_SYNC:
+                syncRepository(REQUEST_SYNC);
                 break;
         }
 
@@ -429,7 +440,7 @@ public class GitActivity extends ActionBarActivity {
      * @param view
      */
     public void cloneRepository(View view) {
-        localDir = new File(getApplicationContext().getFilesDir().getAbsoluteFile() + "/store");
+        localDir = PasswordRepository.getWorkTree();
 
         hostname = ((EditText) findViewById(R.id.clone_uri)).getText().toString();
         port = ((EditText) findViewById(R.id.server_port)).getText().toString();

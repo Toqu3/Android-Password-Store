@@ -35,16 +35,27 @@ public class PasswordRepository {
      */
     public static Repository getRepository(File localDir) {
         if (repository == null) {
-            FileRepositoryBuilder builder = new FileRepositoryBuilder();
-            try {
-                repository = builder.setGitDir(localDir)
-                        .readEnvironment()
-                        .build();
-            } catch (Exception e) {
-                e.printStackTrace();
-                return null;
-            }
+            setRepository(localDir);
         }
+        return repository;
+    }
+
+    /**
+     * Sets the repository to a new directory
+     * @param localDir the git directory of the repository
+     * @return the git repository
+     */
+    public static Repository setRepository(File localDir) {
+        FileRepositoryBuilder builder = new FileRepositoryBuilder();
+        try {
+            repository = builder.setGitDir(localDir)
+                    .readEnvironment()
+                    .build();
+        } catch (Exception e) {
+            e.printStackTrace();
+            return null;
+        }
+
         return repository;
     }
 
@@ -110,6 +121,23 @@ public class PasswordRepository {
         }
     }
 
+    public static String getRemote(String name) {
+        StoredConfig storedConfig = repository.getConfig();
+        Set<String> remotes = storedConfig.getSubsections("remote");
+
+        for (String remote : remotes) {
+            try {
+                if (remote.equals(name)) {
+                    RemoteConfig remoteConfig = new RemoteConfig(storedConfig, remote);
+                    return remoteConfig.getPushURIs().get(0).toString();
+                }
+            } catch (Exception e) {
+
+            }
+        }
+        return "";
+    }
+
     public static void closeRepository() {
         repository.close();
     }
@@ -117,6 +145,8 @@ public class PasswordRepository {
     public static ArrayList<File> getFilesList(){
         return getFilesList(repository.getWorkTree());
     }
+
+//    public static String getName()
 
     /**
      * Gets the password items in the root directory

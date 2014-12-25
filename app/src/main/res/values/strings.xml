@@ -20,6 +20,8 @@
     <string name="key_dialog_text">You have to select your "PGP-Key ID" before initializing the repository</string>
     <string name="connection_dialog_text">Which connection method do you prefer?</string>
     <string name="delete_dialog_text">Are you sure you want to delete the password /"</string>
+    <string name="new_repo_title">New repository</string>
+    <string name="new_repo_message">Enter the name of the new repository</string>
 
     <!-- git commits -->
     <string name="initialization_commit_text">[ANDROID PwdStore] Initialized store with keyID: </string>

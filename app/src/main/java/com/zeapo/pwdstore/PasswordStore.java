@@ -12,10 +12,17 @@ import android.preference.PreferenceManager;
 import android.support.v4.view.MenuItemCompat;
 import android.support.v7.app.ActionBarActivity;
 import android.support.v7.widget.SearchView;
+import android.support.v7.widget.Toolbar;
+import android.text.InputType;
 import android.util.Log;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ArrayAdapter;
+import android.widget.EditText;
+import android.widget.LinearLayout;
+import android.widget.Spinner;
 
 import com.zeapo.pwdstore.crypto.PgpHandler;
 import com.zeapo.pwdstore.git.GitActivity;
@@ -25,15 +32,27 @@ import com.zeapo.pwdstore.utils.PasswordRecyclerAdapter;
 import com.zeapo.pwdstore.utils.PasswordRepository;
 
 import org.apache.commons.io.FileUtils;
+import org.apache.commons.io.filefilter.FileFilterUtils;
+import org.eclipse.jgit.api.CloneCommand;
 import org.eclipse.jgit.api.CommitCommand;
 import org.eclipse.jgit.api.Git;
+import org.eclipse.jgit.lib.Repository;
 
 import java.io.File;
+import java.io.FileFilter;
 import java.io.IOException;
+import java.text.Normalizer;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
 import java.util.Stack;
 
 
 public class PasswordStore extends ActionBarActivity  {
+    private static final String TAG = "PWDSTR";
     private Stack<Integer> scrollPositions;
     /** if we leave the activity to do something, do not add any other fragment */
     public boolean leftActivity = false;
@@ -41,6 +60,10 @@ public class PasswordStore extends ActionBarActivity  {
     private SharedPreferences settings;
     private Activity activity;
     private PasswordFragment plist;
+    private Toolbar toolbar;
+
+    // ugly, we are reload the list each time...
+    private List<File> repositories;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,6 +72,20 @@ public class PasswordStore extends ActionBarActivity  {
         scrollPositions = new Stack<Integer>();
         settings = PreferenceManager.getDefaultSharedPreferences(this.getApplicationContext());
         activity = this;
+
+        toolbar = (Toolbar) findViewById(R.id.main_toolbar);
+
+        // Set an OnMenuItemClickListener to handle menu item clicks
+        toolbar.setOnMenuItemClickListener(new Toolbar.OnMenuItemClickListener() {
+            @Override
+            public boolean onMenuItemClick(MenuItem item) {
+                // Handle the menu item
+                return true;
+            }
+        });
+
+        loadRepositories();
+
     }
 
     @Override
@@ -56,7 +93,7 @@ public class PasswordStore extends ActionBarActivity  {
         super.onResume();
 
         // create the repository static variable in PasswordRepository
-        PasswordRepository.getRepository(new File(getFilesDir() + this.getResources().getString(R.string.store_git)));
+        PasswordRepository.getRepository(new File(getFilesDir() + settings.getString("current_git_repo", "store") + "/.git"));
 
         // re-check that there was no change with the repository state
         checkLocalRepository();
@@ -169,6 +206,48 @@ public class PasswordStore extends ActionBarActivity  {
                 this.leftActivity = true;
                 return true;
 
+            case R.id.new_repository:
+                final EditText repoName = new EditText(this);
+                repoName.setHint("Repository name");
+                repoName.setWidth(LinearLayout.LayoutParams.MATCH_PARENT);
+                repoName.setInputType(InputType.TYPE_CLASS_TEXT);
+
+                new AlertDialog.Builder(this)
+                        .setTitle(this.getResources().getString(R.string.new_repo_title))
+                        .setMessage(this.getResources().getString(R.string.new_repo_message))
+                        .setView(repoName)
+                        .setPositiveButton(this.getResources().getString(R.string.dialog_ok), new DialogInterface.OnClickListener() {
+                            public void onClick(DialogInterface dialog, int whichButton) {
+                                String repositoryName = repoName.getText().toString();
+                                String fileName = Normalizer.normalize(repositoryName.toLowerCase().replace(' ', '_'), Normalizer.Form.NFD);
+                                File repoFile = new File(getFilesDir() + "/" + fileName);
+                                try {
+                                    FileUtils.forceMkdir(repoFile);
+                                    FileUtils.writeStringToFile(new File(repoFile.getAbsolutePath() + "/.name"), repositoryName);
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                    new AlertDialog.Builder(activity).
+                                            setMessage(e.getMessage()).
+                                            setPositiveButton(activity.getResources().getString(R.string.dialog_ok), new DialogInterface.OnClickListener() {
+                                                @Override
+                                                public void onClick(DialogInterface dialogInterface, int i) {
+
+                                                }
+                                            }).show();
+                                    return;
+                                }
+
+                                PasswordRepository.setRepository(new File(repoFile.getAbsolutePath() + "/.git"));
+                                settings.edit().putString("current_git_repo", repoFile.getName()).commit();
+                                checkLocalRepository(true);
+                            }
+                        }).setNegativeButton(this.getResources().getString(R.string.dialog_cancel), new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface dialog, int whichButton) {
+                        // Do nothing.
+                    }
+                }).show();
+                break;
+
             case R.id.refresh:
                 updateListAdapter();
                 return true;
@@ -185,6 +264,62 @@ public class PasswordStore extends ActionBarActivity  {
         return super.onOptionsItemSelected(item);
     }
 
+    /*
+     * for each repository get the .name file, read it.
+     * if there is nothing inside, or there is no .name file, set the path as the name
+     * of the repository
+     */
+    private void loadRepositories() {
+        repositories = new ArrayList<File>(Arrays.asList(getFilesDir().listFiles((FileFilter) FileFilterUtils.directoryFileFilter())));
+        String currentlySelected = settings.getString("current_git_repo", "store");
+        int currentlySelectedIndex = 0;
+
+        List<String> repositoriesNames = new ArrayList<>();
+        int idx = 0;
+        for (File repo : repositories) {
+            File nameFile = new File(repo.getAbsolutePath() + "/.name");
+            String name = "";
+
+            if (nameFile.exists()) {
+                try {
+                    name = FileUtils.readFileToString(nameFile);
+                } catch (Exception e) {
+                    // do nothing
+                }
+            }
+
+            if (name.isEmpty()) {
+                name = repo.getName();
+            }
+
+            if (name.equals(currentlySelected)) {
+                currentlySelectedIndex = idx;
+            }
+            idx++;
+            repositoriesNames.add(name);
+        }
+
+        final ArrayAdapter<String> repoSpinnerAdapter = new ArrayAdapter<String>(getApplicationContext(), android.R.layout.simple_spinner_item, repositoriesNames);
+        Spinner repoSpinner = (Spinner) toolbar.findViewById(R.id.repo_spinner);
+        repoSpinner.setAdapter(repoSpinnerAdapter);
+        repoSpinner.setSelection(currentlySelectedIndex);
+        repoSpinner.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener() {
+            @Override
+            public void onItemSelected(AdapterView<?> adapterView, View view, int i, long l) {
+                String repoName = ((Spinner) findViewById(R.id.repo_spinner)).getSelectedItem().toString();
+                File repoFile = repositories.get(i);
+                PasswordRepository.setRepository(new File(repoFile.getAbsolutePath() + "/.git"));
+                settings.edit().putString("current_git_repo", repoFile.getName()).commit();
+                checkLocalRepository(true);
+            }
+
+            @Override
+            public void onNothingSelected(AdapterView<?> adapterView) {
+
+            }
+        });
+    }
+
     public void getClone(View view){
         Intent intent = new Intent(this, GitActivity.class);
         intent.putExtra("Operation", GitActivity.REQUEST_CLONE);
@@ -194,7 +329,7 @@ public class PasswordStore extends ActionBarActivity  {
     private void createRepository() {
         final String keyId = settings.getString("openpgp_key_ids", "");
 
-        File localDir = new File(getFilesDir() + "/store/");
+        File localDir = PasswordRepository.getWorkTree();
         localDir.mkdir();
         try {
             PasswordRepository.createRepository(localDir);
@@ -265,11 +400,15 @@ public class PasswordStore extends ActionBarActivity  {
     }
 
     private void checkLocalRepository() {
-        checkLocalRepository(PasswordRepository.getWorkTree());
+        checkLocalRepository(false);
     }
 
-    private void checkLocalRepository(File localDir) {
-        Log.d("PASS", "Check, dir: " + localDir.getAbsolutePath());
+    private void checkLocalRepository(boolean newRepo) {
+        checkLocalRepository(PasswordRepository.getWorkTree(), newRepo);
+    }
+
+    private void checkLocalRepository(File localDir, boolean newRepo) {
+        Log.d(TAG, "Check, dir: " + localDir.getAbsolutePath());
         FragmentManager fragmentManager = getFragmentManager();
         FragmentTransaction fragmentTransaction = fragmentManager.beginTransaction();
 
@@ -288,6 +427,10 @@ public class PasswordStore extends ActionBarActivity  {
             // this means that the repository has been correctly cloned
             if ((new File(localDir.getAbsolutePath() + "/.gpg-id")).exists())
                 status++;
+
+            // ignore the .name from the count
+            if ((new File(localDir.getAbsolutePath() + "/.name")).exists() && status > 0)
+                status--;
         }
 
         // either the repo is empty or it was not correctly cloned
@@ -307,6 +450,9 @@ public class PasswordStore extends ActionBarActivity  {
                 fragmentTransaction.commit();
                 break;
             default:
+                if ((fragmentManager.findFragmentByTag("PasswordsList") != null) && newRepo) {
+                    fragmentManager.popBackStack();
+                }
 
                 if (fragmentManager.findFragmentByTag("PasswordsList") == null) {
 
